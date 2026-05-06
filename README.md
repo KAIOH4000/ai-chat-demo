@@ -1,8 +1,6 @@
 # ai-chat-demo
-<img width="1920" height="869" alt="image" src="https://github.com/user-attachments/assets/3177505c-97ec-4219-8edc-98a161a18f6f" />
-
 A minimal AI chat demo built with Next.js App Router and TypeScript.
-<img width="1920" height="869" alt="image" src="https://github.com/user-attachments/assets/ab41707e-769f-4a21-8de3-e7c221424608" />
+<img width="1920" height="869" alt="image" src="https://github.com/user-attachments/assets/7e9caa46-153e-429a-98fb-134709a4ef86" />
 
 ## Features
 
