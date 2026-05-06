@@ -10,6 +10,30 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  --animate-message-in: message-in 0.3s ease-out;
+  --animate-fade-in: fade-in 0.2s ease-out;
+  --animate-pulse-soft: pulse-soft 2s ease-in-out infinite;
+}
+
+@keyframes message-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
 }
 
 @media (prefers-color-scheme: dark) {
@@ -25,6 +49,30 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* Subtle radial gradient overlay */
+.bg-zinc-50 {
+  background-color: #fafafa;
+  background-image: radial-gradient(ellipse at 50% 0%, rgba(24, 24, 27, 0.03) 0%, transparent 60%);
+}
+
+/* Custom scrollbar for messages area */
+.overflow-y-auto::-webkit-scrollbar {
+  width: 6px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb {
+  background: #e4e4e7;
+  border-radius: 3px;
+}
+
+.overflow-y-auto::-webkit-scrollbar-thumb:hover {
+  background: #d4d4d8;
+}
+
 .stream-cursor {
   display: inline-block;
   margin-left: 2px;
@@ -35,4 +83,44 @@ body {
   50% {
     opacity: 0;
   }
+}
+
+/* Markdown code blocks inside chat bubbles */
+.prose-custom pre {
+  margin: 0;
+}
+
+.prose-custom pre code {
+  background: transparent !important;
+  padding: 0 !important;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+}
+
+/* Inline code */
+.prose-custom code:not(pre code) {
+  background-color: #f4f4f5;
+  padding: 0.125rem 0.375rem;
+  border-radius: 4px;
+  font-size: 0.8125rem;
+}
+
+/* Override highlight.js background inside dark pre blocks */
+.prose-custom pre .hljs {
+  background: transparent !important;
+  padding: 0 !important;
+}
+
+/* Sidebar custom scrollbar */
+aside .overflow-y-auto::-webkit-scrollbar {
+  width: 4px;
+}
+
+aside .overflow-y-auto::-webkit-scrollbar-thumb {
+  background: #e4e4e7;
+  border-radius: 2px;
+}
+
+aside .overflow-y-auto::-webkit-scrollbar-thumb:hover {
+  background: #d4d4d8;
 }
