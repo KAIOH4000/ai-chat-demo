@@ -10,6 +10,7 @@
 
 > 上传你的 PDF/Markdown/TXT 文档，AI 基于你的知识库回答，支持流式输出、引用来源追溯。
 
+<img width="1920" height="869" alt="0fdbb80b83bf744e4b2b8cfd9b269a2a" src="https://github.com/user-attachments/assets/3c94f5da-8fe0-45e6-bec9-735b3c0dca88" />
 
 
 
