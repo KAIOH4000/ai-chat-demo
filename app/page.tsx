@@ -4,6 +4,8 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeHighlight from 'rehype-highlight';
+import SourceCitation from '@/components/chat/SourceCitation';
+import type { SourceCitation as SourceCitationType } from '@/lib/rag/types';
 
 // ── localStorage keys ──
 const CONVERSATIONS_KEY = 'ai-chat-demo-conversations';
@@ -31,6 +33,7 @@ type ChatMessage = {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  sources?: SourceCitationType[];
 };
 
 type Conversation = {
@@ -232,6 +235,21 @@ function RenameInput({ value, onSave, onCancel }: { value: string; onSave: (v: s
   );
 }
 
+// ── SSE parsing helpers ──
+function extractSSEField(raw: string, field: string): string {
+  const regex = new RegExp(`^${field}:\\s*(.*)$`, 'm');
+  const match = raw.match(regex);
+  return match ? match[1] : '';
+}
+
+function safeParseSSEData(data: string): unknown {
+  try {
+    return JSON.parse(data);
+  } catch {
+    return data;
+  }
+}
+
 // ══════════════════════════════════════════════
 //  MAIN PAGE COMPONENT
 // ══════════════════════════════════════════════
@@ -251,6 +269,7 @@ export default function HomePage() {
 
   // ── UI state ──
   const [loading, setLoading] = useState(false);
+  const [ragMode, setRagMode] = useState(false);
   const [error, setError] = useState<{ code: string; message: string } | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
@@ -445,33 +464,36 @@ export default function HomePage() {
     const controller = new AbortController();
     abortRef.current = controller;
 
+    const endpoint = ragMode ? '/api/rag/chat' : '/api/chat';
+    const body = JSON.stringify({
+      messages: [...history, { role: 'user', content: trimmed }],
+      model: model.trim() || undefined,
+    });
+
     try {
-      const res = await fetch('/api/chat', {
+      const res = await fetch(endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: [...history, { role: 'user', content: trimmed }],
-          model: model.trim() || undefined,
-        }),
+        body,
         signal: controller.signal,
       });
 
       if (!res.ok) {
+        const ct = res.headers.get('content-type') || '';
+        // RAG 端点错误时返回 SSE，需要特殊处理
+        if (ct.includes('text/event-stream') && res.body) {
+          await parseSSEForError(res.body, assistantId);
+          return;
+        }
         const data = (await res.json().catch(() => ({}))) as { error?: string; code?: string };
         throw new Error(JSON.stringify({ code: data.code ?? 'UPSTREAM_ERROR', message: data.error ?? `请求失败：HTTP ${res.status}` }));
       }
       if (!res.body) throw new Error('流式响应不可用');
 
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value, { stream: true });
-        if (chunk) {
-          setMessages((prev) => prev.map((item) => (item.id === assistantId ? { ...item, content: item.content + chunk } : item)));
-        }
+      if (ragMode) {
+        await readSSEStream(res.body, assistantId);
+      } else {
+        await readPlainStream(res.body, assistantId);
       }
     } catch (e) {
       if (e instanceof DOMException && e.name === 'AbortError') return;
@@ -485,10 +507,91 @@ export default function HomePage() {
         } catch { msg = e.message; }
       }
       setError({ code, message: msg });
-      setMessages((prev) => prev.map((item) => (item.id === assistantId ? { ...item, content: `请求失败：${msg}` } : item)));
+      setMessages((prev) => prev.map((item) => (item.id === assistantId ? { ...item, content: item.content || `请求失败：${msg}` } : item)));
     } finally {
       abortRef.current = null;
       setLoading(false);
+    }
+  }
+
+  // ── SSE 解析：RAG 流式响应 ──
+  async function readSSEStream(body: ReadableStream<Uint8Array>, assistantId: string) {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // SSE 消息以 \n\n 分隔
+        while (buffer.includes('\n\n')) {
+          const idx = buffer.indexOf('\n\n');
+          const raw = buffer.slice(0, idx);
+          buffer = buffer.slice(idx + 2);
+
+          const eventType = extractSSEField(raw, 'event');
+          const data = extractSSEField(raw, 'data');
+
+          if (eventType === 'content' && data) {
+            const text = safeParseSSEData(data);
+            if (text) {
+              setMessages((prev) => prev.map((item) => (item.id === assistantId ? { ...item, content: item.content + text } : item)));
+            }
+          } else if (eventType === 'sources') {
+            const sources = safeParseSSEData(data) as SourceCitationType[];
+            setMessages((prev) => prev.map((item) => (item.id === assistantId ? { ...item, sources } : item)));
+          } else if (eventType === 'error') {
+            setError({ code: 'UPSTREAM_ERROR', message: data || 'RAG 检索失败' });
+          }
+          // 'done' event — just ignore, stream will end naturally
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
+  // ── 普通流式读取（保持原有行为） ──
+  async function readPlainStream(body: ReadableStream<Uint8Array>, assistantId: string) {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = decoder.decode(value, { stream: true });
+        if (chunk) {
+          setMessages((prev) => prev.map((item) => (item.id === assistantId ? { ...item, content: item.content + chunk } : item)));
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
+  }
+
+  // ── 从 SSE 错误流中提取错误信息 ──
+  async function parseSSEForError(body: ReadableStream<Uint8Array>, assistantId: string) {
+    const reader = body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+      }
+      const lineMatch = buffer.match(/^data:\s*(.+)$/m);
+      const msg = lineMatch ? lineMatch[1] : 'RAG 服务错误';
+      setError({ code: 'UPSTREAM_ERROR', message: msg });
+      setMessages((prev) => prev.map((item) => (item.id === assistantId ? { ...item, content: `请求失败：${msg}` } : item)));
+    } finally {
+      reader.releaseLock();
     }
   }
 
@@ -638,6 +741,35 @@ export default function HomePage() {
             </svg>
           </button>
           <h1 className="text-base font-semibold tracking-tight flex-1">AI Chat Demo</h1>
+
+          {/* RAG toggle */}
+          <button
+            onClick={() => setRagMode((v) => !v)}
+            title={ragMode ? 'RAG 模式：基于知识库回答' : '普通模式：直接对话'}
+            className={`hidden md:flex items-center gap-1.5 h-8 px-3 rounded-lg text-xs font-medium transition-all ${
+              ragMode
+                ? 'bg-blue-600 text-white shadow-sm'
+                : 'border border-zinc-200 bg-white text-zinc-500 hover:text-zinc-700'
+            }`}
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+            </svg>
+            RAG
+          </button>
+
+          {/* Knowledge base link */}
+          <a
+            href="/knowledge"
+            className="hidden md:flex items-center gap-1.5 h-8 px-3 rounded-lg border border-zinc-200 bg-white text-xs text-zinc-500 hover:text-zinc-700 hover:bg-zinc-50 transition-all"
+          >
+            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth="2">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 7v10c0 2 1 3 3 3h10c2 0 3-1 3-3V7M4 7c0-2 1-3 3-3h10c2 0 3 1 3 3M4 7h16" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 3v4m3-4v4m3-4v4" />
+            </svg>
+            知识库
+          </a>
+
           <button
             className="hidden md:flex items-center gap-1.5 h-8 px-3 rounded-lg border border-zinc-200 bg-white text-xs text-zinc-600 hover:bg-zinc-50 hover:text-zinc-800 active:scale-[0.97] transition-all"
             onClick={handleNewChat}
@@ -673,6 +805,11 @@ export default function HomePage() {
                           )}
                           {isStreaming ? <span className="stream-cursor" aria-hidden="true">|</span> : null}
                         </div>
+                        {!isStreaming && isAssistant && item.sources && item.sources.length > 0 && (
+                          <div className="mt-2 max-w-[95%] w-full">
+                            <SourceCitation sources={item.sources} />
+                          </div>
+                        )}
                       </div>
                     </div>
                   );
