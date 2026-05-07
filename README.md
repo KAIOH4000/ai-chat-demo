@@ -10,7 +10,9 @@
 
 > 上传你的 PDF/Markdown/TXT 文档，AI 基于你的知识库回答，支持流式输出、引用来源追溯。
 
-<img width="1920" height="869" alt="RAG Chat Screenshot" src="https://github.com/user-attachments/assets/7e9caa46-153e-429a-98fb-134709a4ef86" />
+
+
+
 
 ---
 
