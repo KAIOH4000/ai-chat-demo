@@ -71,11 +71,7 @@
 
 ## 二、Vibe Coding 方法论与关键 Prompt 设计
 
-### 2.1 什么是 Vibe Coding
-
-本项目采用 **Vibe Coding** 开发范式——以自然语言描述意图，由 AI 生成代码框架，人工聚焦架构决策与质量把关。整个过程不是"AI 替我写代码"，而是"我与 AI 协作构建软件"。
-
-### 2.2 本项目 Vibe Coding 实践
+### 2.1 本项目 Vibe Coding 实践
 
 | 阶段 | 方式 | 产出 |
 |------|------|------|
@@ -84,7 +80,7 @@
 | **UI 实现** | 描述交互意图 → AI 生成组件 → 人工验证状态覆盖 | Chat UI、SourceCitation |
 | **调试修复** | 描述现象 → AI 诊断 → 人工确认修复方案 | 流式解析 bug、peer dependency 冲突 |
 
-### 2.3 关键 Prompt 设计
+### 2.2 关键 Prompt 设计
 
 系统中有两层 Prompt 设计，这是 RAG 问答质量的核心：
 
