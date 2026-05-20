@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import { env } from '@/lib/env';
 
 export const dynamic = 'force-dynamic';
 
@@ -46,14 +47,10 @@ export async function POST(req: Request) {
     const body = (await req.json().catch(() => ({}))) as ChatApiRequest;
     const requestModel = typeof body.model === 'string' ? body.model.trim() : '';
 
-    const apiKey = process.env.AI_API_KEY;
-    if (!apiKey) {
-      return errorResponse('MISSING_API_KEY', 'Missing AI_API_KEY', 500);
-    }
-
-    const baseUrl = (process.env.AI_BASE_URL || 'https://api.gemai.cc').replace(/\/+$/, '');
-    const model = requestModel || process.env.AI_MODEL || 'gpt-4o-mini';
-    const systemPrompt = process.env.AI_SYSTEM_PROMPT || 'You are a helpful assistant.';
+    const apiKey = env.AI_API_KEY;
+    const baseUrl = env.AI_BASE_URL;
+    const model = requestModel || env.AI_MODEL;
+    const systemPrompt = env.AI_SYSTEM_PROMPT;
 
     // Build conversation messages – support both new (messages[]) and legacy (single message) formats
     let conversationMessages: { role: string; content: string }[];
